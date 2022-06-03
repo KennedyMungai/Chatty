@@ -1,9 +1,69 @@
 ﻿@page "/"
+@using Microsoft.AspNetCore.SignalR.Client
+@using Chatty.Models
+@inject NavigationManager NavigationManager
+@implements IAsyncDisposable
 
-<PageTitle>Index</PageTitle>
+<div class="container overflow-auto shadow-sm mb-5 bg-white rounded" style="height: 500px;">
 
-<h1>Hello, world!</h1>
+</div>
 
-Welcome to your new app.
+<div class="container">
+    <div class="row">
+        <div class="col-3">
+            <input type="text" class="form-control" name="" id="" aria-describedby="helpId" placeholder="Your Name" @bind="userNameInput" readonly="@isUserReadOnly">
+        </div>
+        <div class="col-6">
+            <textarea class="form-control" name="" id="" rows="3" @bind="@messageInput" placeholder="Type your message"></textarea>
+        </div>
+        <div class="col-3">
+            <button class="btn btn-primary" @onclick="Send" disabled="@IsConnected">Send</button>
+        </div>
+    </div>
+</div>
 
-<SurveyPrompt Title="How is Blazor working for you?" />
+@code {
+    private HubConnection? hubConnection { get; set; }
+    private List<UserMessage> UserMessages = new();
+    private string? userNameInput { get; set; }
+    private string? messageInput { get; set; }
+    private bool isUserReadOnly = false;
+
+    public bool IsConnected => hubConnection?.State == HubConnectionState.Connected;
+
+    protected override async Task OnInitializedAsync()
+    {
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/chathub"))
+            .Build();
+
+        hubConnection.On<string, string>("ReceiveMessage", (user, message) =>
+                {
+                    UserMessages.Add(new UserMessage{UserName = user, Message = message, CurrentUser = user == userNameInput, DateSent = DateTime.Now});
+                    StateHasChanged();
+                }
+            );
+
+        await hubConnection.StartAsync();
+    }
+
+    private async Task Send()
+    {
+        if (!string.IsNullOrEmpty(userNameInput) && !string.IsNullOrEmpty(messageInput))
+        {
+            await hubConnection.SendAsync("SendMessage", userNameInput, messageInput);
+
+            isUserReadOnly = true;
+            messageInput = string.Empty;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+}
+
